@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- TODO: add rice, and wheat, both requiring special handling for processing - unmilled rice to rice, wheat to flour or beer -->
+  <!-- TODO: add non-buyable seeds (carrot, coffee, summer squash, broccoli, powdermelon, ancient fruit). Mixed seeds and wild seeds still excluded -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stardew Valley Crop Profit Calculator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: sans-serif;
+      margin: 1.5rem;
+      background: #f5f0e8;
+      color: #2c1e0f;
+    }
+
+    h1 { margin-top: 0; color: #5a3e1b; }
+
+    /* ── Top panel (inputs + side table) ── */
+    .top-panel {
+      display: flex;
+      gap: 2.5rem;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Inputs grid ── */
+    .inputs-panel {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.45rem 1rem;
+      align-items: center;
+    }
+    .inputs-panel label { font-weight: 600; white-space: nowrap; }
+    select, input[type="text"] {
+      padding: 0.2rem 0.4rem;
+      border: 1px solid #a08060;
+      border-radius: 3px;
+      background: #fff;
+    }
+    input[type="checkbox"] { width: 1rem; height: 1rem; cursor: pointer; }
+
+    /* ── Side table ── */
+    .side-table {
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+    .side-table td {
+      padding: 0.3rem 0.6rem;
+      border: 1px solid #c0aa88;
+    }
+    .side-table td:first-child {
+      font-weight: 600;
+      background: #e4d9c6;
+    }
+    .side-table td:last-child {
+      text-align: right;
+      background: #fff;
+      min-width: 4rem;
+    }
+
+    /* ── Main table ── */
+    .main-table-wrap { overflow-x: auto; }
+    table.main-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.9rem;
+    }
+    .main-table th, .main-table td {
+      padding: 0.3rem 0.65rem;
+      border: 1px solid #c0aa88;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .main-table thead th {
+      background: #c8a96e;
+      color: #fff;
+    }
+    .main-table tbody tr:nth-child(odd)  { background: #faf5ec; }
+    .main-table tbody tr:nth-child(even) { background: #f0e8d5; }
+  </style>
+</head>
+<body>
+
+<h1>🌱 Stardew Valley Crop Profit Calculator</h1>
+
+<div class="top-panel">
+
+  <!-- ── Inputs ── -->
+  <div class="inputs-panel">
+    <label for="farmingLevel">Farming level</label>
+    <select id="farmingLevel"></select>
+
+    <label for="tiller">Tiller</label>
+    <input type="checkbox" id="tiller" />
+
+    <label for="artisan">Artisan</label>
+    <input type="checkbox" id="artisan" />
+
+    <label for="agriculturist">Agriculturist</label>
+    <input type="checkbox" id="agriculturist" />
+
+    <label for="kegs">Kegs</label>
+    <input type="text" id="kegs" value="0" size="6" />
+
+    <label for="preservesJars">Preserves jars</label>
+    <input type="text" id="preservesJars" value="0" size="6" />
+
+    <label for="season">Season</label>
+    <select id="season">
+      <option>Spring</option>
+      <option>Summer</option>
+      <option>Autumn</option>
+    </select>
+
+    <label for="soil">Soil</label>
+    <select id="soil">
+      <option>Bare</option>
+      <option>Basic Fertilizer</option>
+      <option>Quality Fertilizer</option>
+      <option>Deluxe Fertilizer</option>
+      <option>Speed-Gro</option>
+      <option>Deluxe Speed-Gro</option>
+      <option>Hyper Speed-Gro</option>
+    </select>
+  </div>
+
+  <!-- ── Side table ── -->
+  <table class="side-table">
+    <tbody>
+      <tr><td title="Approximate crop value multiplier gained due to the farming level">Crop value multiplier</td>     <td id="cropValueMult">—</td></tr>
+      <tr><td title="Value multiplier to processed crops gained because of the Artisan perk">Processed value multiplier</td><td id="processedValueMult">—</td></tr>
+      <tr><td title="Crop growth speed multiplier gained because of the Tiller perk">Crop growth multiplier</td>    <td id="cropGrowthMult">—</td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<!-- ── Main table ── -->
+<div class="main-table-wrap">
+  <table class="main-table" id="mainTable">
+    <thead>
+      <tr>
+        <th data-col="crop">Crop</th>
+        <th data-col="basePrice">Base price</th>
+        <th data-col="seedPrice">Seed price</th>
+        <th data-col="multiHarvest">Multi-harvest</th>
+        <th data-col="type">Type</th>
+        <th data-col="notes">Notes</th>
+        <th data-col="seedExpense">Seed expense</th>
+        <th data-col="totalExpense">Total expense</th>
+        <th data-col="harvests">Harvests</th>
+        <th data-col="introitsRaw">Introits raw</th>
+        <th data-col="introitsProcessed">Introits processed</th>
+        <th data-col="profitsRaw">Profits raw</th>
+        <th data-col="profitsProcessed">Profits processed</th>
+        <th data-col="gainRaw">Gain raw</th>
+        <th data-col="gainProcessed">Gain processed</th>
+        <th data-col="tilesProcessable">Tiles processable</th>
+      </tr>
+    </thead>
+    <tbody id="mainTableBody"></tbody>
+  </table>
+</div>
+
+<script>
+  // ── Crops list and constants ──────────────────────────────────────────────
+  const SPEED_GRO_1_PRICE = 100;
+  const SPEED_GRO_2_PRICE = 150;
+  const SPEED_GRO_3_PRICE = 376; // Can only be crafted, not bought. Price is the combined sell price of the ingredients (1x radioactive ore + 3 bone fragments + 1 solar essence)
+  const FERTILIZER_1_PRICE = 100;
+  const FERTILIZER_2_PRICE = 150;
+  const FERTILIZER_3_PRICE = 1080; // Can only be crafted, not bought. Price is the combined sell price of the ingredients (1x iridium bar + 40 sap)
+
+  const CROPS = [ // Note: for multi-harvest crops, "harvestTime" is the time between harvests; for single-harvest crops, it's -1
+    {
+      name: 'Cauliflower',
+      seasons: ['Spring'],
+      basePrice: 175,
+      seedPrice: 80,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 12,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Can become a Giant Crop',
+    },
+    {
+      name: 'Garlic',
+      seasons: ['Spring'],
+      basePrice: 60,
+      seedPrice: 40,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 4,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Green Bean',
+      seasons: ['Spring'],
+      basePrice: 40,
+      seedPrice: 60,
+      multiHarvest: true,
+      isFruit: false,
+      growthTime: 10,
+      harvestTime: 3,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Kale',
+      seasons: ['Spring'],
+      basePrice: 110,
+      seedPrice: 70,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 6,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Parsnip',
+      seasons: ['Spring'],
+      basePrice: 35,
+      seedPrice: 20,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 4,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Potato',
+      seasons: ['Spring'],
+      basePrice: 80,
+      seedPrice: 50,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 6,
+      harvestTime: -1,
+      cropsPerHarvest: 1.25,
+    },
+    {
+      name: 'Rhubarb',
+      seasons: ['Spring'],
+      basePrice: 220,
+      seedPrice: 100,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 13,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Seeds can only be bought from the Oasis',
+    },
+    {
+      name: 'Strawberry',
+      seasons: ['Spring'],
+      basePrice: 120,
+      seedPrice: 100,
+      multiHarvest: true,
+      isFruit: true,
+      growthTime: 8,
+      harvestTime: 4,
+      cropsPerHarvest: 1.02,
+      notes: 'Seeds are only available during the Egg Festival',
+    },
+    {
+      name: 'Blueberry',
+      seasons: ['Summer'],
+      basePrice: 50,
+      seedPrice: 80,
+      multiHarvest: true,
+      isFruit: true,
+      growthTime: 13,
+      harvestTime: 4,
+      cropsPerHarvest: 3.02,
+    },
+    {
+      name: 'Corn',
+      seasons: ['Summer', 'Autumn'],
+      basePrice: 50,
+      seedPrice: 150,
+      multiHarvest: true,
+      isFruit: false,
+      growthTime: 14,
+      harvestTime: 4,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Hops',
+      seasons: ['Summer'],
+      basePrice: 25,
+      seedPrice: 60,
+      multiHarvest: true,
+      isFruit: false,
+      growthTime: 11,
+      harvestTime: 1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Hot Pepper',
+      seasons: ['Summer'],
+      basePrice: 40,
+      seedPrice: 40,
+      multiHarvest: true,
+      isFruit: true,
+      growthTime: 5,
+      harvestTime: 3,
+      cropsPerHarvest: 1.03,
+    },
+    {
+      name: 'Melon',
+      seasons: ['Summer'],
+      basePrice: 250,
+      seedPrice: 80,
+      multiHarvest: false,
+      isFruit: true,
+      growthTime: 12,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Can become a Giant Crop',
+    },
+    {
+      name: 'Radish',
+      seasons: ['Summer'],
+      basePrice: 90,
+      seedPrice: 40,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 6,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Red Cabbage',
+      seasons: ['Summer'],
+      basePrice: 260,
+      seedPrice: 100,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 9,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Available from Year 2 onwards',
+    },
+    {
+      name: 'Starfruit',
+      seasons: ['Summer'],
+      basePrice: 750,
+      seedPrice: 400,
+      multiHarvest: false,
+      isFruit: true,
+      growthTime: 13,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Seeds can only be bought from the Oasis',
+    },
+    {
+      name: 'Tomato',
+      seasons: ['Summer'],
+      basePrice: 60,
+      seedPrice: 50,
+      multiHarvest: true,
+      isFruit: false,
+      growthTime: 11,
+      harvestTime: 4,
+      cropsPerHarvest: 1.05,
+    },
+    {
+      name: 'Amaranth',
+      seasons: ['Autumn'],
+      basePrice: 150,
+      seedPrice: 70,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 7,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Artichoke',
+      seasons: ['Autumn'],
+      basePrice: 160,
+      seedPrice: 30,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 8,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Available from Year 2 onwards',
+    },
+    {
+      name: 'Beet',
+      seasons: ['Autumn'],
+      basePrice: 100,
+      seedPrice: 20,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 6,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Seeds can only be bought from the Oasis',
+    },
+    {
+      name: 'Bok Choy',
+      seasons: ['Autumn'],
+      basePrice: 80,
+      seedPrice: 50,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 4,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Cranberries',
+      seasons: ['Autumn'],
+      basePrice: 75,
+      seedPrice: 240,
+      multiHarvest: true,
+      isFruit: true,
+      growthTime: 7,
+      harvestTime: 5,
+      cropsPerHarvest: 2.1,
+    },
+    {
+      name: 'Eggplant',
+      seasons: ['Autumn'],
+      basePrice: 60,
+      seedPrice: 20,
+      multiHarvest: true,
+      isFruit: false,
+      growthTime: 5,
+      harvestTime: 5,
+      cropsPerHarvest: 1.002,
+    },
+    {
+      name: 'Grape',
+      seasons: ['Autumn'],
+      basePrice: 80,
+      seedPrice: 60,
+      multiHarvest: true,
+      isFruit: true,
+      growthTime: 10,
+      harvestTime: 3,
+      cropsPerHarvest: 1,
+    },
+    {
+      name: 'Pumpkin',
+      seasons: ['Autumn'],
+      basePrice: 320,
+      seedPrice: 100,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 13,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+      notes: 'Can become a Giant Crop',
+    },
+    {
+      name: 'Yam',
+      seasons: ['Autumn'],
+      basePrice: 160,
+      seedPrice: 60,
+      multiHarvest: false,
+      isFruit: false,
+      growthTime: 10,
+      harvestTime: -1,
+      cropsPerHarvest: 1,
+    },
+  ];
+
+  // ── Column definitions ────────────────────────────────────────────────────
+
+  /** Ordered list of all column keys, matching the table header order. */
+  const COLUMNS = [
+    'crop', 'basePrice', 'seedPrice', 'multiHarvest', 'type', 'notes',
+    'seedExpense', 'totalExpense', 'harvests', 'introitsRaw', 'introitsProcessed',
+    'profitsRaw', 'profitsProcessed', 'gainRaw', 'gainProcessed', 'tilesProcessable',
+  ];
+
+  /** Columns that accept null — passing null hides the entire column. */
+  const NULLABLE_COLUMNS = new Set([
+    'gainRaw', 'gainProcessed',
+  ]);
+
+  /** Columns that should be rendered in a different color if their value is positive (green) or negative (red). */
+  const SIGNED_COLUMNS = new Set([
+    'profitsRaw', 'profitsProcessed', 'gainRaw', 'gainProcessed',
+  ]);
+
+  // ── Populate farming level dropdown ──────────────────────────────────────
+
+  const farmingLevelEl = document.getElementById('farmingLevel');
+  for (let i = 0; i <= 14; i++) {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = String(i);
+    farmingLevelEl.appendChild(opt);
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /**
+   * Read every input and return a typed snapshot.
+   *
+   * @returns {{
+   *   farmingLevel:  number,
+   *   tiller:        boolean,
+   *   artisan:       boolean,
+   *   agriculturist: boolean,
+   *   kegs:          number,
+   *   preservesJars: number,
+   *   season:        string,
+   *   soil:          string,
+   * }}
+   */
+  function readInputs() {
+    return {
+      farmingLevel:  parseInt(document.getElementById('farmingLevel').value, 10),
+      tiller:        document.getElementById('tiller').checked,
+      artisan:       document.getElementById('artisan').checked,
+      agriculturist: document.getElementById('agriculturist').checked,
+      kegs:          parseInt(document.getElementById('kegs').value, 10)         || 0,
+      preservesJars: parseInt(document.getElementById('preservesJars').value, 10) || 0,
+      season:        document.getElementById('season').value,
+      soil:          document.getElementById('soil').value,
+    };
+  }
+
+  /**
+   * Write the three computed multipliers into the side table.
+   *
+   * @param {number} cropValueMult
+   * @param {number} processedValueMult
+   * @param {number} cropGrowthMult
+   */
+  function setSideTable(cropValueMult, processedValueMult, cropGrowthMult) {
+    document.getElementById('cropValueMult').textContent      = cropValueMult.toFixed(2);
+    document.getElementById('processedValueMult').textContent = processedValueMult.toFixed(2);
+    document.getElementById('cropGrowthMult').textContent     = cropGrowthMult.toFixed(2);
+  }
+
+  /**
+   * Append one row to the main table.
+   *
+   * For any nullable column, pass `null` to hide the whole column
+   * (header + every cell in it). Boolean values are rendered as ✔ / ✘.
+   *
+   * @param {string}       crop
+   * @param {number}       basePrice
+   * @param {number}       seedPrice
+   * @param {boolean}      multiHarvest
+   * @param {string}       type
+   * @param {string}       notes
+   * @param {number}       totalExpense
+   * @param {number}       introitsRaw
+   * @param {number|null}  introitsProcessed
+   * @param {number}       profitsRaw
+   * @param {number|null}  profitsProcessed
+   * @param {number|null}  gainRaw
+   * @param {number|null}  gainProcessed
+   * @param {number}       tilesProcessable
+   */
+  function addRow(
+    crop, basePrice, seedPrice, multiHarvest, type, notes,
+    seedExpense, totalExpense, harvests, introitsRaw, introitsProcessed, profitsRaw,
+    profitsProcessed, gainRaw, gainProcessed,
+    tilesProcessable,
+  ) {
+    const values = {
+      crop, basePrice, seedPrice, multiHarvest, type, notes,
+      seedExpense, totalExpense, harvests, introitsRaw, introitsProcessed, profitsRaw,
+      profitsProcessed, gainRaw, gainProcessed,
+      tilesProcessable,
+    };
+
+    const tr = document.createElement('tr');
+
+    for (const col of COLUMNS) {
+      const td = document.createElement('td');
+      td.dataset.col = col;
+      const val = values[col];
+
+      if (NULLABLE_COLUMNS.has(col) && val === null) {
+        // Hide the full column
+        _setColumnVisible(col, false);
+        td.style.display = 'none';
+      } else {
+        td.textContent =
+          typeof val === 'boolean' ? (val ? '✔' : '✘') :
+          val === null || val === undefined ? '' :
+          String(val);
+        if (SIGNED_COLUMNS.has(col) && val !== null) {
+          td.style.color = val > 0 ? 'green' : 'red';
+        }
+      }
+
+      tr.appendChild(td);
+    }
+
+    document.getElementById('mainTableBody').appendChild(tr);
+  }
+
+  /**
+   * Remove all rows from the main table and restore every column to visible.
+   */
+  function resetTable() {
+    document.getElementById('mainTableBody').innerHTML = '';
+    for (const col of COLUMNS) {
+      _setColumnVisible(col, true);
+    }
+  }
+
+  // ── Internal helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Show or hide an entire column by its data-col key.
+   * @param {string}  col
+   * @param {boolean} visible
+   */
+  function _setColumnVisible(col, visible) {
+    const display = visible ? '' : 'none';
+    const table = document.getElementById('mainTable');
+    const th = table.querySelector(`th[data-col="${col}"]`);
+    if (th) th.style.display = display;
+    table.querySelectorAll(`td[data-col="${col}"]`).forEach(td => {
+      td.style.display = display;
+    });
+  }
+
+  // ── Business logic entry point ────────────────────────────────────────────
+
+  /**
+   * Called whenever any input changes.
+   * *** Fill in your main logic here. ***
+   */
+  function onInputsChanged() {
+    const inputs = readInputs();
+    resetTable();
+
+    const cropValueMult      = (1.01 + (0.017*inputs.farmingLevel)) * (inputs.tiller ? 1.1 : 1.0);
+    const processedValueMult = inputs.artisan ? 1.4 : 1.0;
+    const cropGrowthMult     = inputs.agriculturist ? 0.9 : 1.0;
+
+    setSideTable(cropValueMult, processedValueMult, cropGrowthMult);
+
+    const fertilizerLevel = (
+      inputs.soil === 'Basic Fertilizer' ? 1 :
+      inputs.soil === 'Quality Fertilizer' ? 2 :
+      inputs.soil === 'Deluxe Fertilizer' ? 3 : 0
+    );
+
+    const speedGroLevel = (
+      inputs.soil === 'Speed-Gro' ? 1 :
+      inputs.soil === 'Deluxe Speed-Gro' ? 2 :
+      inputs.soil === 'Hyper Speed-Gro' ? 3 : 0
+    );
+
+    CROPS
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(crop => {
+        if (crop.seasons.includes(inputs.season)) {
+          addTableRow(crop, cropGrowthMult, inputs.farmingLevel, speedGroLevel, fertilizerLevel, inputs.tiller, inputs.artisan, inputs.kegs, inputs.preservesJars);
+        }
+      });
+  }
+
+  // ── Wire up listeners ─────────────────────────────────────────────────────
+
+  const INPUT_IDS = [
+    'farmingLevel', 'tiller', 'artisan', 'agriculturist',
+    'kegs', 'preservesJars', 'season', 'soil',
+  ];
+
+  INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    const event = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
+    el.addEventListener(event, onInputsChanged);
+  });
+
+  // Initial render
+  onInputsChanged();
+
+  // ── Calculation Helpers ───────────────────────────────────────────────────
+  /**
+   * @param {crop} crop object from CROPS list
+   * @param {number} cropGrowthMult crop growth time multiplier (0.9 if agriculturist is active, otherwise 1.0)
+   * @param {number} speedGroLevel 0 for no Speed-Gro, 1 for Speed-Gro, 2 for Deluxe Speed-Gro, 3 for Hyper Speed-Gro
+   */
+  function calculateHarvests(crop, cropGrowthMult, speedGroLevel) {
+    const totalGrowthMult = cropGrowthMult - (
+      speedGroLevel === 1 ? 0.1 :
+      speedGroLevel === 2 ? 0.25 :
+      speedGroLevel === 3 ? 0.33 : 0
+    )
+
+    const growthTime = Math.ceil(crop.growthTime * totalGrowthMult);
+    if(crop.multiHarvest) {
+      const subsequentHarvests = Math.floor((28 - growthTime) / crop.harvestTime); // Number of additional harvests after the first one
+      return 1 + subsequentHarvests; // Total harvests is the first one plus the subsequent ones
+    } else {
+      return Math.floor(28 / growthTime); // For single-harvest crops, we can only plant again after harvesting, so we divide the season length by the growth time
+    }
+  }
+
+  /**
+   * @param {number} farmingLevel level in the Farming skill (0-14)
+   * @param {number} fertilizerLevel 0 for no fertilizer, 1 for Basic Fertilizer, 2 for Quality Fertilizer, 3 for Deluxe Fertilizer
+   * @returns {number} value multiplier due to quality (e.g. 1.16 means +16% compared to base price). Does not take into account Tiller or Artisan, which should be applied separately on top of this multiplier.
+   */
+  function calculateQualityMult(farmingLevel, fertilizerLevel) {
+    switch(fertilizerLevel) {
+      case 1: { // Basic Fertilizer
+        switch(farmingLevel) {
+          case 0: return 1.04;
+          case 1: return 1.08;
+          case 2: return 1.11;
+          case 3: return 1.14;
+          case 4: return 1.17;
+          case 5: return 1.20;
+          case 6: return 1.23;
+          case 7: return 1.25;
+          case 8: return 1.28;
+          case 9: return 1.30;
+          case 10: return 1.32;
+          case 11: return 1.33;
+          case 12: return 1.34;
+          case 13: return 1.35;
+          case 14: return 1.36;
+        }
+      }
+      case 2: { // Quality Fertilizer
+        switch(farmingLevel) {
+          case 0: return 1.07;
+          case 1: return 1.12;
+          case 2: return 1.17;
+          case 3: return 1.21;
+          case 4: return 1.25;
+          case 5: return 1.28;
+          case 6: return 1.31;
+          case 7: return 1.33;
+          case 8: return 1.34;
+          case 9: return 1.36;
+          case 10: return 1.38;
+          case 11: return 1.39;
+          case 12: return 1.41;
+          case 13: return 1.43;
+          case 14: return 1.44;
+        }
+      }
+      case 3: { // Deluxe Fertilizer
+        switch(farmingLevel) {
+          case 0: return 1.32;
+          case 1: return 1.36;
+          case 2: return 1.40;
+          case 3: return 1.44;
+          case 4: return 1.47;
+          case 5: return 1.51;
+          case 6: return 1.55;
+          case 7: return 1.58;
+          case 8: return 1.61;
+          case 9: return 1.64;
+          case 10: return 1.67;
+          case 11: return 1.70;
+          case 12: return 1.73;
+          case 13: return 1.76;
+          case 14: return 1.77;
+        }
+      }
+      default: { // No fertilizer
+        switch(farmingLevel) {
+          case 0: return 1.01;
+          case 1: return 1.03;
+          case 2: return 1.05;
+          case 3: return 1.07;
+          case 4: return 1.09;
+          case 5: return 1.10;
+          case 6: return 1.12;
+          case 7: return 1.14;
+          case 8: return 1.16;
+          case 9: return 1.17;
+          case 10: return 1.19;
+          case 11: return 1.20;
+          case 12: return 1.22;
+          case 13: return 1.23;
+          case 14: return 1.25;
+        }
+      }
+    }
+  }
+
+  /**
+   * Calculate the total seed expense for the season, taking into account multi-harvest crops and Speed-Gro.
+   * @param {crop} crop object from CROPS list
+   * @param {number} cropGrowthMult crop growth time multiplier (0.9 if agriculturist is active, otherwise 1.0)
+   * @param {number} speedGroLevel 0 for no Speed-Gro, 1 for Speed-Gro, 2 for Deluxe Speed-Gro, 3 for Hyper Speed-Gro
+   */
+  function calculateSeedExpense(crop, cropGrowthMult, speedGroLevel) {
+    if(crop.multiHarvest) {
+      return crop.seedPrice; // For multi-harvest crops, we only pay for the seeds once
+    } else {
+      const harvests = calculateHarvests(crop, cropGrowthMult, speedGroLevel);
+      return harvests * crop.seedPrice;
+    }
+  }
+
+  function calculateTotalExpense(crop, cropGrowthMult, speedGroLevel, fertilizerLevel) {
+    const seedExpense = calculateSeedExpense(crop, cropGrowthMult, speedGroLevel);
+    const speedGroCost = (
+      speedGroLevel === 1 ? SPEED_GRO_1_PRICE :
+      speedGroLevel === 2 ? SPEED_GRO_2_PRICE :
+      speedGroLevel === 3 ? SPEED_GRO_3_PRICE : 0
+    );
+    const fertilizerCost = (
+      fertilizerLevel === 1 ? FERTILIZER_1_PRICE :
+      fertilizerLevel === 2 ? FERTILIZER_2_PRICE :
+      fertilizerLevel === 3 ? FERTILIZER_3_PRICE : 0
+    );
+
+    return seedExpense + speedGroCost + fertilizerCost;
+  }
+
+  /**
+   * Calculate the total introits from selling the raw crops at the end of the season, taking into account multi-harvest crops and Speed-Gro.
+   * @param {crop} crop object from CROPS list
+   * @param {number} cropGrowthMult crop growth time multiplier (0.9 if agriculturist is active, otherwise 1.0)
+   * @param {number} speedGroLevel 0 for no Speed-Gro, 1 for Speed-Gro, 2 for Deluxe Speed-Gro, 3 for Hyper Speed-Gro
+   * @param {number} fertilizerLevel 0 for no fertilizer, 1 for Basic Fertilizer, 2 for Quality Fertilizer, 3 for Deluxe Fertilizer
+   * @returns {number|null} Total introits from selling raw crops, or null if the combination of Speed-Gro and Fertilizer is invalid
+   */
+  function calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, speedGroLevel, fertilizerLevel) {
+    if(speedGroLevel > 0 && fertilizerLevel > 0) {
+      console.warn('Invalid combination: Speed-Gro and Fertilizer cannot be used at the same time.');
+      return null; // Speed-Gro and Fertilizer cannot be used at the same time
+    }
+
+    const fertilizerMult = calculateQualityMult(farmingLevel, fertilizerLevel);
+    const harvests = calculateHarvests(crop, cropGrowthMult, speedGroLevel);
+
+    return Math.floor(harvests * crop.cropsPerHarvest * crop.basePrice * fertilizerMult * (isTiller ? 1.1 : 1.0));
+  }
+
+  /**
+   * Calculate the total introits from selling the processed crops at the end of the season, taking into account multi-harvest crops, Speed-Gro, and Artisan profession.
+   * @param {crop} crop object from CROPS list
+   * @param {number} cropGrowthMult crop growth time multiplier (0.9 if agriculturist is active, otherwise 1.0)
+   * @param {number} speedGroLevel 0 for no Speed-Gro, 1 for Speed-Gro, 2 for Deluxe Speed-Gro, 3 for Hyper Speed-Gro
+   * @param {number} fertilizerLevel 0 for no fertilizer, 1 for Basic Fertilizer, 2 for Quality Fertilizer, 3 for Deluxe Fertilizer
+   * @param {boolean} isArtisan true if the player has the Artisan profession, false otherwise
+   * @returns {number|null} Total introits from selling processed crops, or null if the combination of Speed-Gro and Fertilizer is invalid
+   */
+  function calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isArtisan) {
+    if(speedGroLevel > 0 && fertilizerLevel > 0) {
+      console.warn('Invalid combination: Speed-Gro and Fertilizer cannot be used at the same time.');
+      return null; // Speed-Gro and Fertilizer cannot be used at the same time
+    }
+
+    const fertilizerMult = calculateQualityMult(farmingLevel, fertilizerLevel);
+    const harvests = calculateHarvests(crop, cropGrowthMult, speedGroLevel);
+    const introitsRaw = Math.floor(harvests * crop.cropsPerHarvest * crop.basePrice * fertilizerMult); // Processed crops ignore the Tiller bonus
+
+    // Hops can be processed into Pale Ale, which sells for 12 times the price of the raw hops; fruits can be processed into wine, which sells for 3 times the price of the raw fruit; vegetables can be processed into pickles, which sell for 2 times the price of the raw vegetable plus a flat bonus of 50g
+    var processedValue = crop.name == 'Hops' ? introitsRaw * 12 : crop.isFruit ? introitsRaw * 3 : introitsRaw * 2 + 50;
+    if(isArtisan) {
+      processedValue *= 1.4; // Artisan profession increases the value of processed goods by 40%
+    }
+
+    return Math.floor(processedValue);
+  }
+
+  function addTableRow(crop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isTiller, isArtisan, kegs, preservesJars) {
+    if(speedGroLevel > 0 && fertilizerLevel > 0) {
+      console.warn('Invalid combination: Speed-Gro and Fertilizer cannot be used at the same time.');
+      return; // Speed-Gro and Fertilizer cannot be used at the same time
+    }
+
+    const hasSoil = fertilizerLevel > 0 || speedGroLevel > 0;
+
+    const seedExpense = calculateSeedExpense(crop, cropGrowthMult, speedGroLevel);
+    const totalExpense = calculateTotalExpense(crop, cropGrowthMult, speedGroLevel, fertilizerLevel);
+    const totalExpenseNoSoil = hasSoil ? calculateTotalExpense(crop, cropGrowthMult, 0, 0) : null;
+
+    const introitsRaw = calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, speedGroLevel, fertilizerLevel);
+    const introitsProcessed = calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isArtisan);
+    const profitsRaw = introitsRaw - totalExpense;
+    const profitsProcessed = introitsProcessed - totalExpense;
+
+    const profitsRawNoFertilizer = hasSoil ? calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, 0, 0) - totalExpenseNoSoil : null;
+    const profitsProcessedNoFertilizer = hasSoil ? calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, 0, 0, isArtisan) - totalExpenseNoSoil : null;
+
+    const gainRaw = hasSoil ? profitsRaw - profitsRawNoFertilizer : null;
+    const gainProcessed = hasSoil ? profitsProcessed - profitsProcessedNoFertilizer : null;
+    
+    const harvests = calculateHarvests(crop, cropGrowthMult, speedGroLevel);
+    const tilesProcessable = Math.floor(
+      crop.isFruit
+        ? (kegs * 28) / (harvests * crop.cropsPerHarvest * 6.25) // Each fruit can be processed into wine in a keg, which takes 6.25 in-game days
+        : (preservesJars * 28) / (harvests * crop.cropsPerHarvest * 2.5) // Each vegetable can be processed into pickles in a preserves jar, which takes 2.5 in-game days
+    );
+
+    addRow(
+      crop.name,
+      crop.basePrice,
+      crop.seedPrice,
+      crop.multiHarvest,
+      crop.isFruit ? 'Fruit' : 'Vegetable',
+      crop.notes || '',
+      seedExpense,
+      totalExpense,
+      harvests,
+      introitsRaw,
+      introitsProcessed,
+      profitsRaw,
+      profitsProcessed,
+      gainRaw,
+      gainProcessed,
+      tilesProcessable,
+    );
+  }
+</script>
+</body>
+</html>
