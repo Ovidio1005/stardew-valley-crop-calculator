@@ -592,12 +592,16 @@
         _setColumnVisible(col, false);
         td.style.display = 'none';
       } else {
-        td.textContent =
-          typeof val === 'boolean' ? (val ? '✔' : '✘') :
-          val === null || val === undefined ? '' :
-          String(val);
-        if (SIGNED_COLUMNS.has(col) && val !== null) {
-          td.style.color = val > 0 ? 'green' : 'red';
+        if (typeof val === 'string' || val instanceof String) {
+          td.innerHTML = val
+        } else { // Strings used to set custom html content for Corn special case
+          td.textContent =
+            typeof val === 'boolean' ? (val ? '✔' : '✘') :
+            val === null || val === undefined ? '' :
+            String(val);
+          if (SIGNED_COLUMNS.has(col) && val !== null) {
+            td.style.color = val > 0 ? 'green' : 'red';
+          }
         }
       }
 
@@ -885,6 +889,104 @@
     const seedExpense = calculateSeedExpense(crop, cropGrowthMult, speedGroLevel);
     const totalExpense = calculateTotalExpense(crop, cropGrowthMult, speedGroLevel, fertilizerLevel);
     const totalExpenseNoSoil = hasSoil ? calculateTotalExpense(crop, cropGrowthMult, 0, 0) : null;
+
+    if(crop.name == 'Corn') { // Special handling as, among currently supported crops, it is the only one which can grow across two seasons
+      // Summer values
+      const introitsRawSummer = calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, speedGroLevel, fertilizerLevel);
+      const introitsProcessedSummer = calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isArtisan);
+      const profitsRawSummer = introitsRawSummer - totalExpense;
+      const profitsProcessedSummer = introitsProcessedSummer - totalExpense;
+
+      const profitsRawNoFertilizerSummer = hasSoil ? calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, 0, 0) - totalExpenseNoSoil : null;
+      const profitsProcessedNoFertilizerSummer = hasSoil ? calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, 0, 0, isArtisan) - totalExpenseNoSoil : null;
+
+      const gainRawSummer = hasSoil ? profitsRawSummer - profitsRawNoFertilizerSummer : null;
+      const gainProcessedSummer = hasSoil ? profitsProcessedSummer - profitsProcessedNoFertilizerSummer : null;
+
+      const harvestsSummer = calculateHarvests(crop, cropGrowthMult, speedGroLevel)
+      const tilesProcessableSummer = (preservesJars * 28) / (harvestsSummer * crop.cropsPerHarvest * 2.5)
+
+      // Fall values
+      // Note: these are approximate, as they don't take into account the regrowth time from the final days of summer. TODO: make accurate
+      const fallCrop = { ...crop }
+      fallCrop.seedPrice = 0
+      fallCrop.growthTime = 0
+
+      const introitsRawFall = calculateIntroitsRaw(fallCrop, cropGrowthMult, farmingLevel, isTiller, speedGroLevel, fertilizerLevel);
+      const introitsProcessedFall = calculateIntroitsProcessed(fallCrop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isArtisan);
+      const profitsRawFall = introitsRawFall;
+      const profitsProcessedFall = introitsProcessedFall;
+
+      const profitsRawNoFertilizerFall = hasSoil ? calculateIntroitsRaw(fallCrop, cropGrowthMult, farmingLevel, isTiller, 0, 0) : null;
+      const profitsProcessedNoFertilizerFall = hasSoil ? calculateIntroitsProcessed(fallCrop, cropGrowthMult, farmingLevel, 0, 0, isArtisan) : null;
+
+      const gainRawFall = hasSoil ? profitsRawFall - profitsRawNoFertilizerFall : null;
+      const gainProcessedFall = hasSoil ? profitsProcessedFall - profitsProcessedNoFertilizerFall : null;
+
+      const harvestsFall = calculateHarvests(fallCrop, cropGrowthMult, speedGroLevel)
+      const tilesProcessableFall = (preservesJars * 28) / (harvestsFall * crop.cropsPerHarvest * 2.5)
+
+      // Final values
+      const introitsRawString =
+        (introitsRawSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(introitsRawSummer) + "</span> | " +
+        (introitsRawFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(introitsRawFall) + "</span>"
+
+      const introitsProcessedString =
+        (introitsProcessedSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(introitsProcessedSummer) + "</span> | " +
+        (introitsProcessedFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(introitsProcessedFall) + "</span>"
+        
+      const profitsRawString =
+        (profitsRawSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(profitsRawSummer) + "</span> | " +
+        (profitsRawFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(profitsRawFall) + "</span>"
+
+      const profitsProcessedString =
+        (profitsProcessedSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(profitsProcessedSummer) + "</span> | " +
+        (profitsProcessedFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(profitsProcessedFall) + "</span>"
+      
+      const gainRawString = !hasSoil ? null :
+        (gainRawSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(gainRawSummer) + "</span> | " +
+        (gainRawFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(gainRawFall) + "</span>"
+      
+      const gainProcessedString = !hasSoil ? null :
+        (gainProcessedSummer > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(gainProcessedSummer) + "</span> | " +
+        (gainProcessedFall > 0 ? "<span style=\"color: green; \">" : "<span style=\"color: red;\">") +
+        String(gainProcessedFall) + "</span>"
+
+      const harvestsString = harvestsSummer + " | " + harvestsFall
+      const tilesProcessableString = tilesProcessableSummer + " | " + tilesProcessableFall
+
+      const newName = "<span title=\"The values refer to summer and fall respectively, if the crop is planted in fall and persists through the summer\">Corn (Summer + Fall)</span>"
+
+      addRow(
+        newName,
+        crop.basePrice,
+        crop.seedPrice,
+        crop.multiHarvest,
+        crop.isFruit ? 'Fruit' : 'Vegetable',
+        crop.notes || '',
+        seedExpense,
+        totalExpense,
+        harvestsString,
+        introitsRawString,
+        introitsProcessedString,
+        profitsRawString,
+        profitsProcessedString,
+        gainRawString,
+        gainProcessedString,
+        tilesProcessableString,
+      );
+    }
 
     const introitsRaw = calculateIntroitsRaw(crop, cropGrowthMult, farmingLevel, isTiller, speedGroLevel, fertilizerLevel);
     const introitsProcessed = calculateIntroitsProcessed(crop, cropGrowthMult, farmingLevel, speedGroLevel, fertilizerLevel, isArtisan);
